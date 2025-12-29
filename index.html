@@ -54,6 +54,9 @@
       btn.disabled = false;
 
       btn.onclick = async () => {
+        const token = liff.getIDToken();
+        alert("id_token length = " + (token ? token.length : "null"));
+
         btn.disabled = true;
         try {
           setStatus("取得 LINE 資料中…");
