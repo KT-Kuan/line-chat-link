@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system; padding: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; width: 100%; }
+    input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; }
+    .muted { color: #666; font-size: 13px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>串接 LINE 帳號</h2>
+    <p id="status" class="muted">初始化中…</p>
+
+    <label class="muted">分校（可選）</label>
+    <input id="branch" placeholder="例如：忠孝 / 天母 / 線上" />
+
+    <div style="height:12px"></div>
+    <button id="btn" disabled>完成串接</button>
+  </div>
+
+<script>
+  const LIFF_ID = "2008677058-hwoJV2Ot";
+  const GAS_EXEC_URL = "https://script.google.com/macros/s/AKfycbxJoiwtxFYzbvTjFY4VYfFQdfRcY56fLlvYar8krBiHiVBO_REHTCcLBr73KUQJXdi0BQ/exec"; // https://script.google.com/macros/s/xxx/exec
+
+  const statusEl = document.getElementById("status");
+  const btn = document.getElementById("btn");
+
+  const setStatus = (m) => statusEl.textContent = m;
+
+  async function main() {
+    try {
+      setStatus("初始化 LIFF 中…");
+      await liff.init({ liffId: LIFF_ID });
+
+      if (!liff.isLoggedIn()) {
+        setStatus("導向登入中…");
+        liff.login();
+        return;
+      }
+
+      setStatus("已登入，請按「完成串接」");
+      btn.disabled = false;
+
+      btn.onclick = async () => {
+        btn.disabled = true;
+        try {
+          setStatus("取得 LINE 資料中…");
+          const p = await liff.getProfile();
+
+          const payload = {
+            userId: p.userId,
+            displayName: p.displayName,
+            pictureUrl: p.pictureUrl || "",
+            branch: document.getElementById("branch").value || "",
+            note: "linked_by_liff_github_pages"
+          };
+
+          setStatus("寫入中…");
+
+          // 送到 GAS（我們不讀回應，避免 CORS）
+          await fetch(GAS_EXEC_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          setStatus("✅ 已送出！請到 Google Sheet 確認是否新增/更新。");
+          // liff.closeWindow(); // 想自動關閉再打開
+        } catch (e) {
+          console.error(e);
+          setStatus("❌ 失敗：" + (e.message || e));
+          btn.disabled = false;
+          alert("串接失敗：\n" + (e.message || e));
+        }
+      };
+
+    } catch (e) {
+      console.error(e);
+      setStatus("❌ 初始化失敗：" + (e.message || e));
+      alert("LIFF 初始化失敗：\n" + (e.message || e));
+    }
+  }
+
+  main();
+</script>
+</body>
+</html>
