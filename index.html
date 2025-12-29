@@ -6,81 +6,124 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     body { font-family: system-ui, -apple-system; padding: 16px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; width: 100%; }
-    input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; }
-    .muted { color: #666; font-size: 13px; white-space: pre-wrap; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 520px; margin: 0 auto; }
+    button { padding: 12px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; width: 100%; font-size: 16px; }
+    button:disabled { opacity: 0.5; }
+    input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; font-size: 16px; }
+    .muted { color: #666; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+    .row { margin: 10px 0; }
   </style>
 </head>
 <body>
   <div class="card">
     <h2>串接 LINE 帳號</h2>
-    <p id="status" class="muted">初始化中…</p>
 
-    <label class="muted">分校（可選）</label>
-    <input id="branch" placeholder="例如：忠孝 / 天母 / 線上" />
+    <div class="row">
+      <div class="muted" id="status">載入中…</div>
+      <div class="muted" id="debug"></div>
+    </div>
 
-    <div style="height:12px"></div>
-    <button id="btn" disabled>完成串接</button>
+    <div class="row">
+      <div class="muted">分校（可選）</div>
+      <input id="branch" placeholder="例如：忠孝 / 天母 / 線上" />
+    </div>
+
+    <div class="row">
+      <button id="btn" disabled>完成串接</button>
+    </div>
+
+    <div class="row">
+      <button id="btn2" style="margin-top:8px;">重新初始化 / 重新登入</button>
+    </div>
   </div>
 
 <script>
-  const LIFF_ID = "2008677058-qJrTgEZ2";
-  const GAS_EXEC_URL = "https://script.google.com/macros/s/AKfycbxJoiwtxFYzbvTjFY4VYfFQdfRcY56fLlvYar8krBiHiVBO_REHTCcLBr73KUQJXdi0BQ/exec"; // https://script.google.com/macros/s/xxx/exec
+  const LIFF_ID = "2008677058-qJrTgEZ2"; // ←換成你的 LIFF ID
+  const GAS_EXEC_URL = "https://script.google.com/macros/s/AKfycbxJoiwtxFYzbvTjFY4VYfFQdfRcY56fLlvYar8krBiHiVBO_REHTCcLBr73KUQJXdi0BQ/exec"; // ←換成你的 GAS /exec
 
   const statusEl = document.getElementById("status");
+  const debugEl = document.getElementById("debug");
   const btn = document.getElementById("btn");
+  const btn2 = document.getElementById("btn2");
+
   const setStatus = (m) => statusEl.textContent = m;
+  const setDebug = (m) => debugEl.textContent = m;
 
-  async function main() {
-    try {
-      setStatus("初始化 LIFF 中…");
-      await liff.init({ liffId: LIFF_ID });
-
-      if (!liff.isLoggedIn()) {
-        setStatus("導向登入中…");
-        liff.login();
-        return;
-      }
-
-      // 需要在 LIFF scope 勾 openid 才拿得到 ID Token
-      const idToken = liff.getIDToken();
-      if (!idToken) {
-        setStatus("❌ 取不到 id_token：請確認 LIFF scopes 有勾 openid");
-        return;
-      }
-
-      setStatus("已登入，請按「完成串接」");
-      btn.disabled = false;
-
-      btn.onclick = async () => {
-  const token = liff.getIDToken();
-  alert("token? " + (token ? "YES " + token.length : "NO"));
-
-  if (!token) {
-    alert("拿不到 id_token：請確認用 https://liff.line.me/... 從 LINE App 開啟，且 LIFF scope 有勾 openid");
-    return;
+  function hardEnableButton() {
+    // 就算前面失敗，也讓你可以按，至少能看到 alert/錯誤
+    btn.disabled = false;
+    btn.style.pointerEvents = "auto";
   }
 
-  const p = await liff.getProfile();
+  async function init() {
+    setDebug("URL:\n" + location.href);
+    setStatus("初始化 LIFF 中…");
+    btn.disabled = true;
 
-  const form = new URLSearchParams();
-  form.set("id_token", token);
-  form.set("userId", p.userId);
-  form.set("displayName", p.displayName);
-  form.set("pictureUrl", p.pictureUrl || "");
-  form.set("branch", document.getElementById("branch").value || "");
-  form.set("note", "linked_by_liff_github_pages_id_token");
+    try {
+      await liff.init({ liffId: LIFF_ID });
+    } catch (e) {
+      setStatus("❌ liff.init 失敗：" + (e.message || e));
+      hardEnableButton();
+      return;
+    }
 
-  // ★ 這行也加上：讓你確定 form 真的有帶到 id_token
-  console.log("sending id_token length:", form.get("id_token")?.length);
+    if (!liff.isLoggedIn()) {
+      setStatus("尚未登入 → 3 秒後導向登入");
+      setTimeout(() => liff.login(), 800);
+      return;
+    }
 
-  await fetch(GAS_EXEC_URL, { method: "POST", mode: "no-cors", body: form });
+    const token = liff.getIDToken();
+    setStatus("✅ 已登入。id_token=" + (token ? ("YES (" + token.length + ")") : "NO"));
 
-  alert("sent!");
-};
+    // 這裡一定解鎖按鈕
+    hardEnableButton();
+  }
 
-  main();
+  btn.onclick = async () => {
+    try {
+      const token = liff.getIDToken();
+      alert("token? " + (token ? "YES " + token.length : "NO"));
+
+      if (!token) {
+        alert("拿不到 id_token：\n1) 請用 LINE App 內開 https://liff.line.me/...\n2) LIFF Scopes 勾 openid + profile");
+        return;
+      }
+
+      setStatus("取得 profile 中…");
+      const p = await liff.getProfile();
+
+      const form = new URLSearchParams();
+      form.set("id_token", token);
+      form.set("userId", p.userId);
+      form.set("displayName", p.displayName);
+      form.set("pictureUrl", p.pictureUrl || "");
+      form.set("branch", document.getElementById("branch").value || "");
+      form.set("note", "linked_by_liff_github_pages_id_token");
+
+      setStatus("送出到 GAS…");
+
+      await fetch(GAS_EXEC_URL, { method: "POST", mode: "no-cors", body: form });
+
+      setStatus("✅ 已送出！請到 Sheet 的 debug_log 看 HIT/VERIFY/OK");
+      alert("sent!");
+    } catch (e) {
+      console.error(e);
+      setStatus("❌ 送出失敗：" + (e.message || e));
+      alert("送出失敗：\n" + (e.message || e));
+    }
+  };
+
+  btn2.onclick = () => {
+    // 重新登入：確保 token 狀態刷新
+    try {
+      if (liff.isLoggedIn()) liff.logout();
+    } catch (e) {}
+    location.reload();
+  };
+
+  init();
 </script>
 </body>
 </html>
