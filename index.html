@@ -30,7 +30,6 @@
 
   const statusEl = document.getElementById("status");
   const btn = document.getElementById("btn");
-
   const setStatus = (m) => statusEl.textContent = m;
 
   async function main() {
@@ -44,6 +43,13 @@
         return;
       }
 
+      // 需要在 LIFF scope 勾 openid 才拿得到 ID Token
+      const idToken = liff.getIDToken();
+      if (!idToken) {
+        setStatus("❌ 取不到 id_token：請確認 LIFF scopes 有勾 openid");
+        return;
+      }
+
       setStatus("已登入，請按「完成串接」");
       btn.disabled = false;
 
@@ -54,16 +60,17 @@
           const p = await liff.getProfile();
 
           const payload = {
-            userId: p.userId,
+            idToken,                  // ✅ 用來給 GAS 驗證
+            userId: p.userId,         // ✅ 會跟 token 的 sub 對比
             displayName: p.displayName,
             pictureUrl: p.pictureUrl || "",
             branch: document.getElementById("branch").value || "",
-            note: "linked_by_liff_github_pages"
+            note: "linked_by_liff_idtoken"
           };
 
-          setStatus("寫入中…");
+          setStatus("送出驗證與寫入中…");
 
-          // 送到 GAS（我們不讀回應，避免 CORS）
+          // 我們不讀回應（避免 CORS），成功與否以 Sheet 是否新增為準
           await fetch(GAS_EXEC_URL, {
             method: "POST",
             mode: "no-cors",
@@ -72,7 +79,7 @@
           });
 
           setStatus("✅ 已送出！請到 Google Sheet 確認是否新增/更新。");
-          // liff.closeWindow(); // 想自動關閉再打開
+          // liff.closeWindow();
         } catch (e) {
           console.error(e);
           setStatus("❌ 失敗：" + (e.message || e));
@@ -80,7 +87,6 @@
           alert("串接失敗：\n" + (e.message || e));
         }
       };
-
     } catch (e) {
       console.error(e);
       setStatus("❌ 初始化失敗：" + (e.message || e));
